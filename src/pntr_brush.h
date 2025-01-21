@@ -51,6 +51,9 @@ extern "C" {
 #endif
 #include PNTR_BRUSH_PNTR_H
 
+#include <math.h>
+#define radToDeg(angleInRadians) ((angleInRadians) * 180.0 / M_PI)
+
 typedef enum pntr_brush_action_type {
     PNTR_BRUSH_ACTION_TYPE_MOVE_TO = 0,
     PNTR_BRUSH_ACTION_TYPE_LINE_TO,
@@ -78,6 +81,10 @@ typedef struct pntr_brush {
     pntr_font* font;
 } pntr_brush;
 
+#ifndef PNTR_BRUSH_ARC_SEGMENTS
+#define PNTR_BRUSH_ARC_SEGMENTS 100
+#endif
+
 // Brush methods
 PNTR_BRUSH_API pntr_brush* pntr_load_brush(pntr_image* dst);
 PNTR_BRUSH_API void pntr_unload_brush(pntr_brush* brush);
@@ -92,7 +99,7 @@ PNTR_BRUSH_API void pntr_brush_fill_text(pntr_brush* brush, const char* text, in
 PNTR_BRUSH_API void pntr_brush_draw_image(pntr_brush* brush, pntr_image* image, int posX, int posY);
 PNTR_BRUSH_API void pntr_brush_fill(pntr_brush* brush);
 PNTR_BRUSH_API void pntr_brush_stroke(pntr_brush* brush);
-PNTR_BRUSH_API void pntr_brush_arc(pntr_brush* brush, int centerX, int centerY, float radius, float startAngle, float endAngle, int segments);
+PNTR_BRUSH_API void pntr_brush_arc(pntr_brush* brush, int centerX, int centerY, float radius, float startAngle, float endAngle, bool counterclockwise);
 
 // Path methods
 PNTR_BRUSH_API void pntr_brush_begin_path(pntr_brush* brush);
@@ -235,7 +242,7 @@ PNTR_BRUSH_API inline void pntr_brush_line_to(pntr_brush* brush, int posX, int p
     };
 }
 
-PNTR_BRUSH_API void pntr_brush_arc(pntr_brush* brush, int centerX, int centerY, float radius, float startAngle, float endAngle, int segments) {
+PNTR_BRUSH_API void pntr_brush_arc(pntr_brush* brush, int centerX, int centerY, float radius, float startAngle, float endAngle, bool counterclockwise) {
     brush->path[brush->pathSize++] = PNTR_CLITERAL(pntr_brush_action) {
         .type = PNTR_BRUSH_ACTION_TYPE_ARC,
         .position = PNTR_CLITERAL(pntr_vector) {
@@ -243,9 +250,9 @@ PNTR_BRUSH_API void pntr_brush_arc(pntr_brush* brush, int centerX, int centerY, 
             .y = centerY
         },
         .radius = radius,
-        .startAngle = startAngle,
-        .endAngle = endAngle,
-        .segments = segments
+        .startAngle = radToDeg(startAngle),
+        .endAngle = radToDeg(endAngle),
+        .segments = PNTR_BRUSH_ARC_SEGMENTS
     };
 }
 
