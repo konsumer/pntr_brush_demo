@@ -82,7 +82,7 @@ typedef struct pntr_brush {
 } pntr_brush;
 
 #ifndef PNTR_BRUSH_ARC_SEGMENTS
-#define PNTR_BRUSH_ARC_SEGMENTS 100
+#define PNTR_BRUSH_ARC_SEGMENTS 2048
 #endif
 
 // Brush methods
@@ -250,8 +250,8 @@ PNTR_BRUSH_API void pntr_brush_arc(pntr_brush* brush, int centerX, int centerY, 
             .y = centerY
         },
         .radius = radius,
-        .startAngle = radToDeg(startAngle),
-        .endAngle = radToDeg(endAngle),
+        .startAngle = startAngle,
+        .endAngle = endAngle,
         .segments = PNTR_BRUSH_ARC_SEGMENTS
     };
 }
@@ -280,7 +280,7 @@ PNTR_BRUSH_API void pntr_brush_stroke(pntr_brush* brush) {
             }
             break;
             case PNTR_BRUSH_ACTION_TYPE_ARC: {
-                pntr_draw_arc(brush->dst, action->position.x, action->position.y, action->radius, action->startAngle, action->endAngle, action->segments, brush->strokeStyle);
+                pntr_draw_arc(brush->dst, action->position.x, action->position.y, action->radius, radToDeg(action->startAngle), radToDeg(action->endAngle), action->segments, brush->strokeStyle);
             }
             break;
         }
@@ -311,7 +311,7 @@ PNTR_BRUSH_API void pntr_brush_fill(pntr_brush* brush) {
             }
             break;
             case PNTR_BRUSH_ACTION_TYPE_ARC: {
-                pntr_draw_arc_fill(brush->dst, action->position.x, action->position.y, action->radius, action->startAngle, action->endAngle, action->segments, brush->fillStyle);
+                pntr_draw_arc_fill(brush->dst, action->position.x, action->position.y, action->radius, radToDeg(action->startAngle), radToDeg(action->endAngle), action->segments, brush->fillStyle);
             }
             break;
         }
