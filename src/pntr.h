@@ -492,8 +492,6 @@ PNTR_API void pntr_draw_line_vertical(pntr_image* dst, int posX, int posY, int h
 PNTR_API void pntr_draw_line_horizontal(pntr_image* dst, int posX, int posY, int width, pntr_color color);
 PNTR_API void pntr_draw_rectangle(pntr_image* dst, int posX, int posY, int width, int height, pntr_color color);
 PNTR_API void pntr_draw_rectangle_rec(pntr_image* dst, pntr_rectangle rec, pntr_color color);
-PNTR_API void pntr_draw_rectangle_thick(pntr_image* dst, int posX, int posY, int width, int height, int thickness, pntr_color color);
-PNTR_API void pntr_draw_rectangle_thick_rec(pntr_image* dst, pntr_rectangle rect, int thickness, pntr_color color);
 PNTR_API void pntr_draw_rectangle_fill(pntr_image* dst, int posX, int posY, int width, int height, pntr_color color);
 PNTR_API void pntr_draw_rectangle_fill_rec(pntr_image* dst, pntr_rectangle rect, pntr_color color);
 PNTR_API void pntr_draw_rectangle_gradient(pntr_image* dst, int x, int y, int width, int height, pntr_color topLeft, pntr_color topRight, pntr_color bottomLeft, pntr_color bottomRight);
@@ -599,6 +597,22 @@ PNTR_API void* pntr_load_memory(size_t size);
 PNTR_API void pntr_unload_memory(void* pointer);
 PNTR_API void* pntr_memory_copy(void* destination, void* source, size_t size);
 PNTR_API pntr_image_type pntr_get_file_image_type(const char* filePath);
+
+PNTR_API void pntr_draw_line_thick(pntr_image* dst, int startPosX, int startPosY, int endPosX, int endPosY, int thickness, pntr_color color);
+PNTR_API void pntr_draw_line_thick_vec(pntr_image* dst, pntr_vector start, pntr_vector end, int thickness, pntr_color color);
+PNTR_API void pntr_draw_rectangle_thick(pntr_image* dst, int posX, int posY, int width, int height, int thickness, pntr_color color);
+PNTR_API void pntr_draw_rectangle_thick_rec(pntr_image* dst, pntr_rectangle rect, int thickness, pntr_color color);
+PNTR_API void pntr_draw_triangle_thick(pntr_image* dst, int x1, int y1, int x2, int y2, int x3, int y3, int thickness, pntr_color color);
+PNTR_API void pntr_draw_triangle_thick_vec(pntr_image* dst, pntr_vector point1, pntr_vector point2, pntr_vector point3, int thickness, pntr_color color);
+PNTR_API void pntr_draw_ellipse_thick(pntr_image* dst, int centerX, int centerY, int radiusX, int radiusY, int thickness, pntr_color color);
+PNTR_API void pntr_draw_circle_thick(pntr_image* dst, int centerX, int centerY, int radius, int thickness, pntr_color color);
+PNTR_API void pntr_draw_polygon_thick(pntr_image* dst, pntr_vector* points, int numPoints, int thickness, pntr_color color);
+PNTR_API void pntr_draw_polyline_thick(pntr_image* dst, pntr_vector* points, int numPoints, int thickness, pntr_color color);
+PNTR_API void pntr_draw_arc_thick(pntr_image* dst, int centerX, int centerY, float radius, float startAngle, float endAngle, int segments, int thickness, pntr_color color);
+PNTR_API void pntr_draw_rectangle_thick_rounded(pntr_image* dst, int x, int y, int width, int height, int topLeftRadius, int topRightRadius, int bottomLeftRadius, int bottomRightRadius, int thickness, pntr_color color);
+PNTR_API void pntr_draw_line_vertical_thick(pntr_image* dst, int posX, int posY, int height, int thickness, pntr_color color);
+PNTR_API void pntr_draw_line_horizontal_thick(pntr_image* dst, int posX, int posY, int width, int thickness, pntr_color color);
+PNTR_API void pntr_draw_line_curve_thick(pntr_image* dst, pntr_vector point1, pntr_vector point2, pntr_vector point3, pntr_vector point4, int segments, int thickness, pntr_color color);
 
 // Internal
 PNTR_API void pntr_put_horizontal_line_unsafe(pntr_image* dst, int posX, int posY, int width, pntr_color color);
@@ -1937,6 +1951,115 @@ PNTR_API void pntr_draw_line(pntr_image *dst, int startPosX, int startPosY, int 
     }
 }
 
+/**
+ * Draws a line on the given image, with thickness
+ */
+PNTR_API void pntr_draw_line_thick(pntr_image *dst, int startPosX, int startPosY, int endPosX, int endPosY, int thickness, pntr_color color) {
+    if (thickness < 1) {
+        return;
+    }
+    if (thickness == 1) {
+        pntr_draw_line(dst, startPosX, startPosY, endPosX, endPosY, color);
+        return;
+    }
+
+    if (dst == NULL || color.rgba.a == 0) {
+        return;
+    }
+
+    int changeInX = (endPosX - startPosX);
+    int absChangeInX = (changeInX < 0) ? -changeInX : changeInX;
+    int changeInY = (endPosY - startPosY);
+    int absChangeInY = (changeInY < 0) ? -changeInY : changeInY;
+
+    // Drawing a straight line is fast.
+    if (startPosX == endPosX) {
+        pntr_draw_line_vertical_thick(dst, startPosX, (startPosY > endPosY) ? endPosY : startPosY, absChangeInY, thickness, color);
+        return;
+    }
+
+    if (startPosY == endPosY) {
+        pntr_draw_line_horizontal_thick(dst, (startPosX > endPosX) ? endPosX : startPosX, startPosY, absChangeInX, thickness, color);
+        return;
+    }
+
+    int startU, startV, endU, stepV;
+    int A, B, P;
+    int reversedXY = (absChangeInY < absChangeInX);
+
+    if (reversedXY) {
+        A = 2 * absChangeInY;
+        B = A - 2 * absChangeInX;
+        P = A - absChangeInX;
+
+        if (changeInX > 0) {
+            startU = startPosX;
+            startV = startPosY;
+            endU = endPosX;
+            //endV = endPosY;
+        }
+        else {
+            startU = endPosX;
+            startV = endPosY;
+            endU = startPosX;
+            //endV = startPosY;
+
+            // Since start and end are reversed
+            changeInX = -changeInX;
+            changeInY = -changeInY;
+        }
+
+        stepV = (changeInY < 0) ? -1 : 1;
+
+        // pntr_draw_point(dst, startU, startV, color);
+        pntr_draw_circle_fill(dst, startU, startV, thickness/2, color);
+    }
+    else {
+        A = 2 * absChangeInX;
+        B = A - 2 * absChangeInY;
+        P = A - absChangeInY;
+
+        if (changeInY > 0) {
+            startU = startPosY;
+            startV = startPosX;
+            endU = endPosY;
+        }
+        else {
+            startU = endPosY;
+            startV = endPosX;
+            endU = startPosY;
+
+            changeInX = -changeInX;
+            changeInY = -changeInY;
+        }
+
+        stepV = (changeInX < 0) ? -1 : 1;
+
+        // pntr_draw_point(dst, startV, startU, color);
+        pntr_draw_circle_fill(dst, startV, startU, thickness/2, color);
+
+    }
+
+    for (int u = startU + 1, v = startV; u <= endU; u++) {
+        if (P >= 0) {
+            v += stepV;
+            P += B;
+        }
+        else {
+            P += A;
+        }
+
+        if (reversedXY) {
+            // pntr_draw_point(dst, u, v, color);
+            pntr_draw_circle_fill(dst, u, v, thickness/2, color);
+        }
+        else {
+            // pntr_draw_point(dst, v, u, color);
+            pntr_draw_circle_fill(dst, v, u, thickness/2, color);
+        }
+    }
+}
+
 PNTR_API void pntr_draw_line_curve(pntr_image* dst, pntr_vector point1, pntr_vector point2, pntr_vector point3, pntr_vector point4, int segments, pntr_color color) {
     if (dst == NULL || color.rgba.a == 0 || segments <= 0) {
         return;
@@ -1959,6 +2082,28 @@ PNTR_API void pntr_draw_line_curve(pntr_image* dst, pntr_vector point1, pntr_vec
     }
 }
 
+PNTR_API void pntr_draw_line_curve_thick(pntr_image* dst, pntr_vector point1, pntr_vector point2, pntr_vector point3, pntr_vector point4, int segments, int thickness, pntr_color color) {
+    if (dst == NULL || color.rgba.a == 0 || segments <= 0) {
+        return;
+    }
+
+    float t_step = 1.0f / (float)segments;
+    pntr_vector last = point1;
+    for (int i_step = 1; i_step <= segments; ++i_step) {
+        float t = t_step * (float)i_step;
+        float u = 1.0f - t;
+        float w1 = u * u * u;
+        float w2 = 3 * u * u * t;
+        float w3 = 3 * u * t * t;
+        float w4 = t * t * t;
+        float x = w1 * (float)point1.x + w2 * (float)point2.x + w3 * (float)point3.x + w4 * (float)point4.x;
+        float y = w1 * (float)point1.y + w2 * (float)point2.y + w3 * (float)point3.y + w4 * (float)point4.y;
+        pntr_draw_line_thick(dst, last.x, last.y, (int)x, (int)y, thickness, color);
+        last.x = (int)x;
+        last.y = (int)y;
+    }
+}
+
 PNTR_API void pntr_draw_polyline(pntr_image* dst, pntr_vector* points, int numPoints, pntr_color color) {
     if (color.rgba.a == 0 || dst == NULL || numPoints <= 0 || points == NULL) {
         return;
@@ -1971,6 +2116,21 @@ PNTR_API void pntr_draw_polyline(pntr_image* dst, pntr_vector* points, int numPo
 
     for (int i = 0; i < numPoints - 1; i++) {
         pntr_draw_line_vec(dst, points[i], points[i + 1], color);
+    }
+}
+
+PNTR_API void pntr_draw_polyline_thick(pntr_image* dst, pntr_vector* points, int numPoints, int thickness, pntr_color color) {
+    if (color.rgba.a == 0 || dst == NULL || numPoints <= 0 || points == NULL) {
+        return;
+    }
+
+    if (numPoints == 1) {
+        pntr_draw_point_vec(dst, points, color);
+        return;
+    }
+
+    for (int i = 0; i < numPoints - 1; i++) {
+        pntr_draw_line_thick_vec(dst, points[i], points[i + 1], thickness, color);
     }
 }
 
@@ -2009,6 +2169,12 @@ PNTR_API void pntr_draw_line_horizontal(pntr_image* dst, int posX, int posY, int
     }
 }
 
+PNTR_API void pntr_draw_line_horizontal_thick(pntr_image* dst, int posX, int posY, int width, int thickness, pntr_color color) {
+    pntr_draw_rectangle_fill(dst, posX, posY - thickness / 2, width, thickness, color);
+    pntr_draw_circle_fill(dst, posX, posY, thickness / 2, color);
+    pntr_draw_circle_fill(dst, posX + width, posY, thickness / 2, color);
+}
+
 /**
  * Draw a vertical line at the given x, y coordinates.
  *
@@ -2043,6 +2209,12 @@ PNTR_API void pntr_draw_line_vertical(pntr_image* dst, int posX, int posY, int h
             pntr_blend_color(&PNTR_PIXEL(dst, posX, posY + y), color);
         }
     }
+}
+
+PNTR_API void pntr_draw_line_vertical_thick(pntr_image* dst, int posX, int posY, int height, int thickness, pntr_color color) {
+    pntr_draw_rectangle_fill(dst, posX - thickness / 2, posY, thickness, height, color);
+    pntr_draw_circle_fill(dst, posX, posY, thickness / 2, color);
+    pntr_draw_circle_fill(dst, posX, posY + height, thickness / 2, color);
 }
 
 /**
@@ -2263,6 +2435,58 @@ PNTR_API void pntr_draw_circle_fill(pntr_image* dst, int centerX, int centerY, i
 }
 
 /**
+ * Draws a circle from the given center, with the given radius & line-thickness.
+ *
+ * @param dst The image to draw the circle onto.
+ * @param centerX The center of the circle at the X coordinate.
+ * @param centerX The center of the circle at the Y coordinate.
+ * @param radius The radius of the circle.
+ * @param color The desired color of the circle.
+ *
+ */
+PNTR_API void pntr_draw_circle_thick(pntr_image* dst, int centerX, int centerY, int radius, int thickness, pntr_color color) {
+    if (thickness < 1) {
+        return;
+    }
+    if (thickness == 1) {
+        pntr_draw_circle(dst, centerX, centerY, radius, color);
+        return;
+    }
+    if (dst == NULL || color.rgba.a == 0) {
+        return;
+    }
+
+    if (radius < 0) {
+        radius = -radius;
+    }
+
+    // Check that the circle is in the bounds.
+    if (centerX + radius < dst->clip.x || centerY + radius < dst->clip.y || centerX - radius > dst->clip.x + dst->clip.width || centerY - radius > dst->clip.y + dst->clip.height) {
+        return;
+    }
+
+    int largestX = radius;
+    int r2 = radius * radius;
+    for (int y = 0; y <= radius; ++y) {
+        int y2 = y * y;
+        for (int x = largestX; x >= 0; --x) {
+            if (x * x + y2 <= r2) {
+                pntr_draw_circle_fill(dst, centerX + x, centerY + y, thickness/2, color);
+                pntr_draw_circle_fill(dst, centerX - x, centerY + y, thickness/2, color);
+                pntr_draw_circle_fill(dst, centerX + x, centerY - y, thickness/2, color);
+                pntr_draw_circle_fill(dst, centerX - x, centerY - y, thickness/2, color);
+                pntr_draw_circle_fill(dst, centerX + y, centerY + x, thickness/2, color);
+                pntr_draw_circle_fill(dst, centerX - y, centerY + x, thickness/2, color);
+                pntr_draw_circle_fill(dst, centerX + y, centerY - x, thickness/2, color);
+                pntr_draw_circle_fill(dst, centerX - y, centerY - x, thickness/2, color);
+                largestX = x;
+                break;
+            }
+        }
+    }
+}
+
+/**
  * Draws an ellipse on the given image.
  *
  * @param dst The image to draw the filled circle onto.
@@ -2361,6 +2585,61 @@ PNTR_API void pntr_draw_ellipse_fill(pntr_image* dst, int centerX, int centerY, 
 }
 
 /**
+ * Draws an ellipse on the given image, with line-thikness.
+ *
+ * @param dst The image to draw the filled circle onto.
+ * @param centerX The center of the circle at the X coordinate.
+ * @param centerX The center of the circle at the Y coordinate.
+ * @param radiusX The  horizontal radius of the circle.
+ * @param radiusY The vertical radius of the circle.
+ * @param thickness The thickness of the line
+ * @param color The desired color of the circle.
+ *
+ */
+PNTR_API void pntr_draw_ellipse_thick(pntr_image* dst, int centerX, int centerY, int radiusX, int radiusY, int thickness, pntr_color color) {
+    if (thickness < 1) {
+        return;
+    }
+    if (thickness == 1) {
+        pntr_draw_ellipse(dst, centerX, centerY, radiusX, radiusY, color);
+        return;
+    }
+    if (dst == NULL || radiusX == 0 || radiusY == 0 || color.rgba.a == 0) {
+        return;
+    }
+
+    int x = 0;
+    if (radiusX < 0) {
+        radiusX = -radiusX;
+    }
+    if (radiusY < 0) {
+        radiusY = -radiusY;
+    }
+
+    int radiusXSquared = radiusX * radiusX;
+    int radiusXSquared2 = radiusXSquared * 2;
+    int radiusYSquared = radiusY * radiusY;
+    int radiusYSquared2 = radiusYSquared * 2;
+    int error = radiusYSquared - radiusXSquared * radiusY;
+
+    while (radiusY >= 0) {
+        pntr_draw_circle_fill(dst, centerX + x, centerY + radiusY, thickness/2, color);
+        pntr_draw_circle_fill(dst, centerX - x, centerY + radiusY, thickness/2, color);
+        pntr_draw_circle_fill(dst, centerX - x, centerY - radiusY, thickness/2, color);
+        pntr_draw_circle_fill(dst, centerX + x, centerY - radiusY, thickness/2, color);
+
+        if (error <= 0) {
+            x++;
+            error += radiusYSquared2 * x + radiusYSquared;
+        }
+        if (error > 0) {
+            radiusY--;
+            error -= radiusXSquared2 * radiusY - radiusXSquared;
+        }
+    }
+}
+
+/**
  * Draw a triangle using vectors.
  *
  * @param dst Where to draw the triangle.
@@ -2371,6 +2650,22 @@ PNTR_API void pntr_draw_ellipse_fill(pntr_image* dst, int centerX, int centerY, 
  */
 PNTR_API void pntr_draw_triangle_vec(pntr_image* dst, pntr_vector point1, pntr_vector point2, pntr_vector point3, pntr_color color) {
     pntr_draw_triangle(dst, point1.x, point1.y, point2.x, point2.y, point3.x, point3.y, color);
+}
+
+/**
+ * Draw a triangle using vectors, with line-thickness.
+ *
+ * @param dst Where to draw the triangle.
+ * @param point1 The first point in the triangle.
+ * @param point2 The second point in the triangle.
+ * @param point3 The third point in the triangle.
+ * @param thickness The thickness of the line
+ * @param color What color to draw the triangle.
+ */
+void pntr_draw_triangle_thick_vec(pntr_image *dst, pntr_vector point1, pntr_vector point2, pntr_vector point3, int thickness, pntr_color color) {
+    pntr_draw_line_thick(dst, point1.x, point1.y, point2.x, point2.y, thickness, color);
+    pntr_draw_line_thick(dst, point2.x, point2.y, point3.x, point3.y, thickness, color);
+    pntr_draw_line_thick(dst, point3.x, point3.y, point1.x, point1.y, thickness, color);
 }
 
 /**
@@ -2390,6 +2685,26 @@ PNTR_API void pntr_draw_triangle(pntr_image* dst, int x1, int y1, int x2, int y2
     pntr_draw_line(dst, x2, y2, x3, y3, color);
     pntr_draw_line(dst, x3, y3, x1, y1, color);
 }
+
+/**
+ * Draw a triangle on an image, with line-thickness.
+ *
+ * @param dst The image of which to draw the triangle.
+ * @param x1 The x coordinate of the first point.
+ * @param y1 The y coordinate of the first point.
+ * @param x2 The x coordinate of the second point.
+ * @param y2 The y coordinate of the second point.
+ * @param x3 The x coordinate of the third point.
+ * @param y3 The y coordinate of the third point.
+ * @param thickness The thickness of the line
+ * @param color The line color for the triangle.
+ */
+PNTR_API void pntr_draw_triangle_thick(pntr_image* dst, int x1, int y1, int x2, int y2, int x3, int y3, int thickness, pntr_color color) {
+    pntr_draw_line_thick(dst, x1, y1, x2, y2, thickness, color);
+    pntr_draw_line_thick(dst, x2, y2, x3, y3, thickness, color);
+    pntr_draw_line_thick(dst, x3, y3, x1, y1, thickness, color);
+}
+
 
 /**
  * Draw a filled triangle on an image.
@@ -2416,6 +2731,10 @@ PNTR_API void pntr_draw_line_vec(pntr_image* dst, pntr_vector start, pntr_vector
     pntr_draw_line(dst, start.x, start.y, end.x, end.y, color);
 }
 
+PNTR_API void pntr_draw_line_thick_vec(pntr_image* dst, pntr_vector start, pntr_vector end, int thickness, pntr_color color) {
+    pntr_draw_line_thick(dst, start.x, start.y, end.x, end.y, thickness, color);
+}
+
 PNTR_API void pntr_draw_polygon(pntr_image* dst, pntr_vector* points, int numPoints, pntr_color color) {
     if (dst == NULL || color.rgba.a == 0 || numPoints <= 0 || points == NULL) {
         return;
@@ -2431,6 +2750,24 @@ PNTR_API void pntr_draw_polygon(pntr_image* dst, pntr_vector* points, int numPoi
         }
 
         pntr_draw_line(dst, points[i].x, points[i].y, points[nextPointIndex].x, points[nextPointIndex].y, color);
+   }
+}
+
+PNTR_API void pntr_draw_polygon_thick(pntr_image* dst, pntr_vector* points, int numPoints, int thickness, pntr_color color) {
+    if (dst == NULL || color.rgba.a == 0 || numPoints <= 0 || points == NULL) {
+        return;
+    }
+
+    int nextPointIndex;
+    for (int i = 0; i < numPoints; i++) {
+        if (i < numPoints - 1) {
+            nextPointIndex = i + 1;
+        }
+        else {
+            nextPointIndex = 0;
+        }
+
+        pntr_draw_line_thick(dst, points[i].x, points[i].y, points[nextPointIndex].x, points[nextPointIndex].y, thickness, color);
    }
 }
 
@@ -2557,6 +2894,35 @@ PNTR_API void pntr_draw_arc(pntr_image* dst, int centerX, int centerY, float rad
     }
 }
 
+PNTR_API void pntr_draw_arc_thick(pntr_image* dst, int centerX, int centerY, float radius, float startAngle, float endAngle, int segments, int thickness, pntr_color color) {
+    if (radius == 0.0f) {
+        pntr_draw_point(dst, centerX, centerY, color);
+        return;
+    }
+    if (segments < 0) {
+        return;
+    }
+
+    float startAngleRad = startAngle * PNTR_PI / 180.0f;
+    float endAngleRad = endAngle * PNTR_PI / 180.0f;
+
+    // Calculate how much distance between each segment
+    float stepAngle = (endAngleRad - startAngleRad) / (float)(segments);
+
+    // Draw the arc with line segments
+    int x1 = centerX + (int)((float)radius * PNTR_COSF(startAngleRad));
+    int y1 = centerY + (int)((float)radius * PNTR_SINF(startAngleRad));
+    float angle;
+    for (int i = 1; i < segments; i++) {
+        angle = startAngleRad + (float)i * stepAngle;
+        int x2 = centerX + (int)((float)radius * PNTR_COSF(angle));
+        int y2 = centerY + (int)((float)radius * PNTR_SINF(angle));
+        pntr_draw_line_thick(dst, x1, y1, x2, y2, thickness, color);
+        x1 = x2;
+        y1 = y2;
+    }
+}
+
 PNTR_API void pntr_draw_arc_fill(pntr_image* dst, int centerX, int centerY, float radius, float startAngle, float endAngle, int segments, pntr_color color) {
     if (radius <= 0.0f) {
         pntr_draw_point(dst, centerX, centerY, color);
@@ -2597,6 +2963,26 @@ PNTR_API void pntr_draw_rectangle_rounded(pntr_image* dst, int x, int y, int wid
     pntr_draw_arc(dst, x + width - topRightRadius - 1, y + topRightRadius, (float)topRightRadius, 0.0f, -90.0f, topRightRadius * 2, color); // Top Right
     pntr_draw_arc(dst, x + bottomLeftRadius, y + height - bottomLeftRadius, (float)bottomLeftRadius, -180.0f, -270.0f, bottomLeftRadius * 2, color); // Bottom Left
     pntr_draw_arc(dst, x + width - bottomRightRadius - 1, y + height - bottomRightRadius, (float)bottomRightRadius, 0.0f, 90.0f, bottomRightRadius * 2, color); // Bottom Right
+}
+
+PNTR_API void pntr_draw_rectangle_thick_rounded(pntr_image* dst, int x, int y, int width, int height, int topLeftRadius, int topRightRadius, int bottomLeftRadius, int bottomRightRadius, int thickness, pntr_color color) {
+    if (thickness < 1) {
+        return;
+    }
+    if (thickness == 1) {
+        pntr_draw_rectangle_rounded(dst, x, y, width, height, topLeftRadius, topRightRadius, bottomLeftRadius, bottomRightRadius, color);
+        return;
+    }
+    for (int offset = 0; offset < thickness; offset++ ) {
+        pntr_draw_line_horizontal(dst, x + topLeftRadius - offset, y - offset, width - topLeftRadius - topRightRadius - offset, color); // Top
+        pntr_draw_line_horizontal(dst, x + bottomLeftRadius - offset, y + height - offset, width - bottomLeftRadius - bottomRightRadius - 1 - offset, color); // Bottom
+        pntr_draw_line_vertical(dst, x - offset, y + topLeftRadius - offset, height - topLeftRadius - bottomLeftRadius - offset, color); // Left
+        pntr_draw_line_vertical(dst, x + width - 1 - offset, y + topRightRadius - offset, height - topRightRadius - bottomRightRadius - offset, color); // Right
+    }
+    pntr_draw_arc_thick(dst, x + topLeftRadius, y + topLeftRadius, (float)topLeftRadius, 180.0f, 270.0f, topLeftRadius * 2, thickness, color); // Top Left
+    pntr_draw_arc_thick(dst, x + width - topRightRadius - 1, y + topRightRadius, (float)topRightRadius, 0.0f, -90.0f, topRightRadius * 2, thickness, color); // Top Right
+    pntr_draw_arc_thick(dst, x + bottomLeftRadius, y + height - bottomLeftRadius, (float)bottomLeftRadius, -180.0f, -270.0f, bottomLeftRadius * 2, thickness, color); // Bottom Left
+    pntr_draw_arc_thick(dst, x + width - bottomRightRadius - 1, y + height - bottomRightRadius, (float)bottomRightRadius, 0.0f, 90.0f, bottomRightRadius * 2, thickness, color); // Bottom Right
 }
 
 PNTR_API void pntr_draw_rectangle_rounded_fill(pntr_image* dst, int x, int y, int width, int height, int cornerRadius, pntr_color color) {
